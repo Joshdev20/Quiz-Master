@@ -46,7 +46,7 @@
       <h1 class="text-4xl font-extrabold mb-6 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
         <i class="fas fa-brain mr-2"></i>QuizMaster
       </h1>
-      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 11:51 PM WAT, June 23, 2025)</p>
+      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 12:06 AM WAT, June 24, 2025)</p>
       <div class="space-y-4">
         <div>
           <label for="category" class="block text-sm font-medium text-gray-300 mb-1">
@@ -110,9 +110,14 @@
         </div>
         <h3 id="question" class="text-lg font-medium mb-6"></h3>
         <div id="options" class="space-y-3"></div>
-        <button id="submit-btn" class="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition duration-300 mt-6">
-          <i class="fas fa-check mr-2"></i>Submit Answer
-        </button>
+        <div class="flex space-x-4 mt-6">
+          <button id="submit-btn" class="flex-1 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition duration-300">
+            <i class="fas fa-check mr-2"></i>Submit Answer
+          </button>
+          <button id="pause-btn" class="flex-1 bg-yellow-600 text-white px-4 py-3 rounded-lg hover:bg-yellow-700 transition duration-300">
+            <i class="fas fa-pause mr-2"></i>Pause
+          </button>
+        </div>
       </div>
     </div>
     <!-- Results Screen -->
@@ -142,15 +147,27 @@
     </div>
     <!-- Review Modal -->
     <div id="review-modal" class="hidden fixed inset-0 modal flex items-center justify-center z-50">
-      <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 h-full flex flex-col" style="max-height: 65vh;">
+      <div class="bg-gray-800 p-6 rounded-xl shadow-2xl w-full mx-4 max-w-md" style="max-height: 70vh;">
         <h3 class="text-2xl font-bold mb-4">
           <i class="fas fa-eye mr-2"></i>Answer Review
         </h3>
-        <div id="review-content" class="space-y-4 p-4 flex-1">
+        <div id="review-content" class="space-y-4 p-4 flex-1 overflow-y-auto">
           <!-- Content will be populated by JavaScript -->
         </div>
         <button id="close-review" class="w-full bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition duration-300 mt-4">
           <i class="fas fa-times mr-2"></i>Close
+        </button>
+      </div>
+    </div>
+    <!-- Pause Modal -->
+    <div id="pause-modal" class="hidden fixed inset-0 modal flex items-center justify-center z-50">
+      <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 text-center">
+        <h3 class="text-2xl font-bold mb-4">
+          <i class="fas fa-pause mr-2"></i>Paused
+        </h3>
+        <p class="text-gray-400 mb-6">Quiz is paused. Resume to continue.</p>
+        <button id="resume-btn" class="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition duration-300">
+          <i class="fas fa-play mr-2"></i>Resume
         </button>
       </div>
     </div>
@@ -165,11 +182,14 @@
     const quizContent = document.getElementById('quiz-content');
     const reviewModal = document.getElementById('review-modal');
     const reviewContent = document.getElementById('review-content');
+    const pauseModal = document.getElementById('pause-modal');
     const startBtn = document.getElementById('start-btn');
     const submitBtn = document.getElementById('submit-btn');
     const retryBtn = document.getElementById('retry-btn');
     const reviewBtn = document.getElementById('review-btn');
     const closeReview = document.getElementById('close-review');
+    const pauseBtn = document.getElementById('pause-btn');
+    const resumeBtn = document.getElementById('resume-btn');
     const questionNumber = document.getElementById('question-number');
     const questionText = document.getElementById('question');
     const optionsContainer = document.getElementById('options');
@@ -188,6 +208,7 @@
     let score = 0;
     let timer;
     let timeLeft = 15;
+    let isPaused = false;
     let leaderboardPage = 0;
     const scoresPerPage = 3;
 
@@ -232,6 +253,7 @@
       quizScreen.classList.remove('hidden');
       resultsScreen.classList.add('hidden');
       reviewModal.classList.add('hidden');
+      pauseModal.classList.add('hidden');
       currentQuestionIndex = 0;
       score = 0;
       userAnswers = [];
@@ -273,20 +295,23 @@
       timerDisplay.textContent = timeLeft;
       clearInterval(timer);
       timer = setInterval(() => {
-        timeLeft--;
-        timerDisplay.textContent = timeLeft;
-        if (timeLeft <= 0) {
-          clearInterval(timer);
-          userAnswers.push({ questionIndex: currentQuestionIndex, selected: null });
-          new Audio('https://freesound.org/data/previews/156/156031_2828628-lq.mp3').play();
-          currentQuestionIndex++;
-          displayQuestion();
+        if (!isPaused) {
+          timeLeft--;
+          timerDisplay.textContent = timeLeft;
+          if (timeLeft <= 0) {
+            clearInterval(timer);
+            userAnswers.push({ questionIndex: currentQuestionIndex, selected: null });
+            new Audio('https://freesound.org/data/previews/156/156031_2828628-lq.mp3').play();
+            currentQuestionIndex++;
+            displayQuestion();
+          }
         }
       }, 1000);
     }
 
     // Check Answer
     function checkAnswer() {
+      if (isPaused) return;
       const selected = document.querySelector('input[name="answer"]:checked');
       const selectedAnswer = selected ? selected.value : null;
       userAnswers.push({ questionIndex: currentQuestionIndex, selected: selectedAnswer });
@@ -395,6 +420,23 @@
       });
     }
 
+    // Pause Quiz
+    function pauseQuiz() {
+      if (isPaused) return;
+      isPaused = true;
+      clearInterval(timer);
+      quizContent.classList.add('hidden');
+      pauseModal.classList.remove('hidden');
+    }
+
+    // Resume Quiz
+    function resumeQuiz() {
+      isPaused = false;
+      pauseModal.classList.add('hidden');
+      quizContent.classList.remove('hidden');
+      startTimer();
+    }
+
     // Pagination Event Listeners
     prevPage.addEventListener('click', () => {
       if (leaderboardPage > 0) {
@@ -416,6 +458,8 @@
     retryBtn.addEventListener('click', startQuiz);
     reviewBtn.addEventListener('click', showReview);
     closeReview.addEventListener('click', () => reviewModal.classList.add('hidden'));
+    pauseBtn.addEventListener('click', pauseQuiz);
+    resumeBtn.addEventListener('click', resumeQuiz);
   </script>
 </body>
-  </html>
+</html>
