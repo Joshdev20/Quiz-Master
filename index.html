@@ -37,6 +37,16 @@
     .modal {
       background: rgba(0, 0, 0, 0.75);
     }
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .pause-gradient {
+      background: linear-gradient(135deg, #1e293b, #2d3748);
+    }
   </style>
 </head>
 <body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen font-sans">
@@ -46,7 +56,7 @@
       <h1 class="text-4xl font-extrabold mb-6 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
         <i class="fas fa-brain mr-2"></i>QuizMaster
       </h1>
-      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 12:06 AM WAT, June 24, 2025)</p>
+      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 12:14 AM WAT, June 24, 2025)</p>
       <div class="space-y-4">
         <div>
           <label for="category" class="block text-sm font-medium text-gray-300 mb-1">
@@ -147,12 +157,14 @@
     </div>
     <!-- Review Modal -->
     <div id="review-modal" class="hidden fixed inset-0 modal flex items-center justify-center z-50">
-      <div class="bg-gray-800 p-6 rounded-xl shadow-2xl w-full mx-4 max-w-md" style="max-height: 70vh;">
+      <div class="bg-gray-800 p-6 rounded-xl w-full max-w-lg mx-auto" style="max-height: calc(70vh - 100px);">
         <h3 class="text-2xl font-bold mb-4">
           <i class="fas fa-eye mr-2"></i>Answer Review
         </h3>
-        <div id="review-content" class="space-y-4 p-4 flex-1 overflow-y-auto">
-          <!-- Content will be populated by JavaScript -->
+        <div id="review-content">
+          <div id="review-scroll" class="space-y-4 p-4 overflow-y-auto" style="max-height: calc(70vh - 150px); min-height: 200px;">
+            <!-- Content will be populated by JavaScript -->
+          </div>
         </div>
         <button id="close-review" class="w-full bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition duration-300 mt-4">
           <i class="fas fa-times mr-2"></i>Close
@@ -161,12 +173,12 @@
     </div>
     <!-- Pause Modal -->
     <div id="pause-modal" class="hidden fixed inset-0 modal flex items-center justify-center z-50">
-      <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 text-center">
+      <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 text-center pause-gradient">
         <h3 class="text-2xl font-bold mb-4">
           <i class="fas fa-pause mr-2"></i>Paused
         </h3>
-        <p class="text-gray-400 mb-6">Quiz is paused. Resume to continue.</p>
-        <button id="resume-btn" class="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition duration-300">
+        <p class="text-gray-400 mb-6">Time remaining: <span id="pause-timer"></span>s</p>
+        <button id="resume-btn" class="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-opacity duration-300 fade-in">
           <i class="fas fa-play mr-2"></i>Resume
         </button>
       </div>
@@ -181,8 +193,9 @@
     const loadingScreen = document.getElementById('loading-screen');
     const quizContent = document.getElementById('quiz-content');
     const reviewModal = document.getElementById('review-modal');
-    const reviewContent = document.getElementById('review-content');
+    const reviewScroll = document.getElementById('review-scroll');
     const pauseModal = document.getElementById('pause-modal');
+    const pauseTimerDisplay = document.getElementById('pause-timer');
     const startBtn = document.getElementById('start-btn');
     const submitBtn = document.getElementById('submit-btn');
     const retryBtn = document.getElementById('retry-btn');
@@ -291,7 +304,6 @@
 
     // Start Timer
     function startTimer() {
-      timeLeft = 15;
       timerDisplay.textContent = timeLeft;
       clearInterval(timer);
       timer = setInterval(() => {
@@ -397,9 +409,9 @@
     // Display Review Modal
     function showReview() {
       reviewModal.classList.remove('hidden');
-      reviewContent.innerHTML = '';
+      reviewScroll.innerHTML = '';
       if (userAnswers.length === 0) {
-        reviewContent.innerHTML = '<p class="text-gray-400">No answers to review!</p>';
+        reviewScroll.innerHTML = '<p class="text-gray-400">No answers to review!</p>';
         return;
       }
       userAnswers.forEach((answer, index) => {
@@ -416,7 +428,7 @@
           </p>
           <p class="text-green-400"><i class="fas fa-check-circle mr-2"></i>Correct Answer: ${q.correct_answer}</p>
         `;
-        reviewContent.appendChild(div);
+        reviewScroll.appendChild(div);
       });
     }
 
@@ -425,6 +437,7 @@
       if (isPaused) return;
       isPaused = true;
       clearInterval(timer);
+      pauseTimerDisplay.textContent = timeLeft;
       quizContent.classList.add('hidden');
       pauseModal.classList.remove('hidden');
     }
