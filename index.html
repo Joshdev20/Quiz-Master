@@ -8,6 +8,8 @@
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <!-- FontAwesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86bU8zQ/3B3lX1aD2K3I6nH2g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <!-- Hugging Face Reference for Explanation (Informational) -->
+  <link rel="noopener" href="https://huggingface.co/models" title="Hugging Face Models for Explanation Generation">
   <style>
     /* Custom styles for progress bar, animations, and skeleton loader */
     .progress-bar {
@@ -56,6 +58,22 @@
     .score-animation {
       transition: all 1s ease-out;
     }
+    .review-card {
+      background: linear-gradient(135deg, #2d3748, #1e293b);
+      border: 1px solid #4b5563;
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+    }
+    .badge-correct { background-color: #10b981; }
+    .badge-incorrect { background-color: #ef4444; }
+    .badge-skipped { background-color: #6b7280; }
   </style>
 </head>
 <body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen font-sans">
@@ -65,7 +83,7 @@
       <h1 class="text-4xl font-extrabold mb-6 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
         <i class="fas fa-brain mr-2"></i>QuizMaster
       </h1>
-      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 12:23 AM WAT, June 24, 2025)</p>
+      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 12:55 AM WAT, June 24, 2025)</p>
       <div class="space-y-4">
         <div>
           <label for="category" class="block text-sm font-medium text-gray-300 mb-1" aria-label="Select category">
@@ -166,14 +184,22 @@
     </div>
     <!-- Review Modal -->
     <div id="review-modal" class="hidden fixed inset-0 modal flex items-center justify-center z-50">
-      <div class="bg-gray-800 p-6 rounded-xl w-full max-w-lg mx-auto" style="max-height: calc(80vh - 100px);">
-        <h3 class="text-2xl font-bold mb-4">
-          <i class="fas fa-eye mr-2"></i>Answer Review
+      <div class="bg-gray-800 p-6 rounded-xl w-full max-w-4xl mx-auto" style="max-height: calc(90vh - 100px);">
+        <h3 class="text-2xl font-bold mb-4 flex items-center">
+          <i class="fas fa-eye mr-2"></i>Answer Review <span id="review-progress" class="text-sm text-gray-400 ml-2"></span>
         </h3>
         <div id="review-content">
-          <div id="review-scroll" class="space-y-6 p-4 overflow-y-auto" style="max-height: calc(80vh - 150px); min-height: 250px;">
+          <div id="review-scroll" class="space-y-6 p-4 overflow-y-auto" style="max-height: calc(90vh - 200px); min-height: 300px;">
             <!-- Content will be populated by JavaScript -->
           </div>
+        </div>
+        <div class="flex justify-between mt-4">
+          <button id="prev-review" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition duration-300" aria-label="Previous question">
+            <i class="fas fa-chevron-left mr-2"></i>Previous
+          </button>
+          <button id="next-review" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition duration-300" aria-label="Next question">
+            <i class="fas fa-chevron-right mr-2"></i>Next
+          </button>
         </div>
         <button id="close-review" class="w-full bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition duration-300 mt-4" aria-label="Close review">
           <i class="fas fa-times mr-2"></i>Close
@@ -243,39 +269,65 @@
     const progressBar = document.getElementById('progress-bar');
     const categorySelect = document.getElementById('category');
     const difficultySelect = document.getElementById('difficulty');
+    const reviewProgress = document.getElementById('review-progress');
+    const prevReview = document.getElementById('prev-review');
+    const nextReview = document.getElementById('next-review');
 
     let questions = [];
     let userAnswers = [];
     let currentQuestionIndex = 0;
     let score = 0;
     let timer;
-    let timeLeft = 30; // Increased to 30 seconds
+    let timeLeft = 30; // Initial value, reset per question
     let isPaused = false;
     let leaderboardPage = 0;
+    let currentReviewIndex = 0;
     const scoresPerPage = 3;
 
-    // Fetch Questions from Open Trivia API
+    // Fetch Questions from Open Trivia API and Gemini for Explanations
     async function fetchQuestions() {
       const category = categorySelect.value;
       const difficulty = difficultySelect.value;
-      const url = `https://opentdb.com/api.php?amount=10&type=multiple&category=${category}${difficulty ? `&difficulty=${difficulty}` : ''}`;
+      const triviaUrl = `https://opentdb.com/api.php?amount=10&type=multiple&category=${category}${difficulty ? `&difficulty=${difficulty}` : ''}`;
+      const geminiApiKey = "AIzaSyDIBI4Hd385tk_9AOPL_tcfPn37AQMWaTs"; // Temporary, insecure use
       loadingScreen.classList.remove('hidden');
       quizContent.classList.add('hidden');
       try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Network error. Please check your connection.');
-        const data = await response.json();
-        if (data.response_code !== 0) throw new Error('Unable to fetch questions. Please try a different category or difficulty.');
-        questions = data.results.map(q => ({
+        const triviaResponse = await fetch(triviaUrl);
+        if (!triviaResponse.ok) throw new Error('Network error. Please check your connection.');
+        const triviaData = await triviaResponse.json();
+        if (triviaData.response_code !== 0) throw new Error('Unable to fetch questions. Please try a different category or difficulty.');
+        questions = triviaData.results.map(q => ({
           question: decodeHTML(q.question),
           options: [...q.incorrect_answers, q.correct_answer]
             .map(decodeHTML)
             .sort(() => Math.random() - 0.5),
           correct_answer: decodeHTML(q.correct_answer),
-          explanation: `Explanation: This question tests your knowledge of ${q.category.toLowerCase().replace('entertainment: ', '')}. The correct answer relates to ${decodeHTML(q.correct_answer).toLowerCase()} due to its historical/scientific/cultural significance.` // Placeholder
+          explanation: "Loading..." // Placeholder
         }));
+        // Fetch explanations from Gemini API
+        for (let q of questions) {
+          const prompt = {
+            contents: [{
+              parts: [{
+                text: `Provide a brief explanation for the trivia question: ${q.question}. The correct answer is ${q.correct_answer}. Keep it concise and educational.`
+              }]
+            }]
+          };
+          const geminiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(prompt)
+            }
+          );
+          if (!geminiResponse.ok) throw new Error('Failed to fetch explanation from Gemini API.');
+          const geminiData = await geminiResponse.json();
+          q.explanation = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "Explanation not available.";
+        }
       } catch (error) {
-        console.error('Error fetching questions:', error);
+        console.error('Error fetching questions or explanations:', error);
         errorMessage.textContent = error.message;
         errorModal.classList.remove('hidden');
       }
@@ -314,6 +366,7 @@
         showResults();
         return;
       }
+      timeLeft = 30; // Reset timer to 30 seconds for each question
       const q = questions[currentQuestionIndex];
       questionNumber.textContent = currentQuestionIndex + 1;
       questionText.textContent = q.question;
@@ -429,32 +482,62 @@
       nextPage.disabled = end >= highScores.length;
     }
 
-        // Display Review Modal
+    // Display Review Modal
     function showReview() {
       reviewModal.classList.remove('hidden');
+      currentReviewIndex = 0;
+      displayReviewQuestion();
+    }
+
+    function displayReviewQuestion() {
       reviewScroll.innerHTML = '';
       if (userAnswers.length === 0) {
         reviewScroll.innerHTML = '<p class="text-gray-400 text-lg">No answers to review!</p>';
         return;
       }
-      userAnswers.forEach((answer, index) => {
-        const q = questions[answer.questionIndex];
-        const isCorrect = answer.selected === q.correct_answer;
-        const isSkipped = answer.selected === null;
-        const div = document.createElement('div');
-        div.className = 'p-4 bg-gray-700 rounded-lg shadow-md';
-        div.innerHTML = `
-          <p class="font-semibold mb-2 text-base"><i class="fas fa-question-circle mr-2"></i>${q.question}</p>
-          <p class="${isSkipped ? 'text-gray-400' : isCorrect ? 'text-green-400' : 'text-red-400'} text-sm">
-            <i class="${isSkipped ? 'fas fa-forward' : isCorrect ? 'fas fa-check-circle' : 'fas fa-times-circle'} mr-2"></i>
-            Your Answer: ${answer.selected || 'Skipped'}
-          </p>
-          <p class="text-green-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Correct Answer: ${q.correct_answer}</p>
-          <p class="text-gray-300 text-xs mt-2 italic">Explanation: ${q.explanation}</p>
-        `;
-        reviewScroll.appendChild(div);
-      });
+      const answer = userAnswers[currentReviewIndex];
+      const q = questions[answer.questionIndex];
+      const isCorrect = answer.selected === q.correct_answer;
+      const isSkipped = answer.selected === null;
+      reviewScroll.innerHTML = `
+        <div class="review-card shadow-lg">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p class="text-lg font-semibold mb-2"><i class="fas fa-question-circle mr-2"></i>${q.question}</p>
+              <p class="text-base mb-2">
+                <span class="badge ${isSkipped ? 'badge-skipped' : isCorrect ? 'badge-correct' : 'badge-incorrect'} mr-2">
+                  <i class="${isSkipped ? 'fas fa-forward' : isCorrect ? 'fas fa-check' : 'fas fa-times'} mr-1"></i>
+                  ${isSkipped ? 'Skipped' : `Your Answer: ${answer.selected}`}
+                </span>
+              </p>
+              <p class="text-base text-green-400"><i class="fas fa-check-circle mr-2"></i>Correct Answer: ${q.correct_answer}</p>
+            </div>
+            <div>
+              <p class="text-gray-300 text-sm italic mt-2 md:mt-0">Explanation: ${q.explanation}</p>
+            </div>
+          </div>
+        </div>
+      `;
+      reviewProgress.textContent = `(${currentReviewIndex + 1}/${userAnswers.length})`;
+      prevReview.disabled = currentReviewIndex === 0;
+      nextReview.disabled = currentReviewIndex === userAnswers.length - 1;
     }
+
+    // Navigate Review
+    prevReview.addEventListener('click', () => {
+      if (currentReviewIndex > 0) {
+        currentReviewIndex--;
+        displayReviewQuestion();
+      }
+    });
+    nextReview.addEventListener('click', () => {
+      if (currentReviewIndex < userAnswers.length - 1) {
+        currentReviewIndex++;
+        displayReviewQuestion();
+      }
+    });
+    prevReview.addEventListener('keypress', (e) => { if (e.key === 'Enter' && currentReviewIndex > 0) { currentReviewIndex--; displayReviewQuestion(); } });
+    nextReview.addEventListener('keypress', (e) => { if (e.key === 'Enter' && currentReviewIndex < userAnswers.length - 1) { currentReviewIndex++; displayReviewQuestion(); } });
 
     // Pause Quiz
     function pauseQuiz() {
