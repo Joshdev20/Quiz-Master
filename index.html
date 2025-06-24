@@ -83,7 +83,7 @@
       <h1 class="text-4xl font-extrabold mb-6 bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
         <i class="fas fa-brain mr-2"></i>QuizMaster
       </h1>
-      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 12:55 AM WAT, June 24, 2025)</p>
+      <p class="text-gray-400 mb-6">Test your knowledge with our exciting trivia challenge! (Last updated: 01:03 AM WAT, June 24, 2025)</p>
       <div class="space-y-4">
         <div>
           <label for="category" class="block text-sm font-medium text-gray-300 mb-1" aria-label="Select category">
@@ -104,6 +104,28 @@
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
             <option value="hard">Hard</option>
+          </select>
+        </div>
+        <div>
+          <label for="question-count" class="block text-sm font-medium text-gray-300 mb-1" aria-label="Select number of questions">
+            <i class="fas fa-question mr-2"></i>Number of Questions
+          </label>
+          <select id="question-count" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500" aria-required="true">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+        <div>
+          <label for="timer-duration" class="block text-sm font-medium text-gray-300 mb-1" aria-label="Select timer duration">
+            <i class="fas fa-clock mr-2"></i>Timer per Question (seconds)
+          </label>
+          <select id="timer-duration" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:ring-2 focus:ring-blue-500" aria-required="true">
+            <option value="15">15</option>
+            <option value="30" selected>30</option>
+            <option value="45">45</option>
+            <option value="60">60</option>
           </select>
         </div>
         <button id="start-btn" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition duration-300 animate-pulse-slow" aria-label="Start quiz">
@@ -136,7 +158,7 @@
       <div id="quiz-content" class="hidden">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-semibold">
-            Question <span id="question-number"></span>/10
+            Question <span id="question-number"></span>/<span id="total-questions"></span>
           </h2>
           <div class="text-lg flex items-center" id="timer-container">
             <i class="fas fa-clock mr-2"></i><span id="timer" class="low-time" aria-live="polite">30</span>s
@@ -162,7 +184,7 @@
       <h2 class="text-3xl font-bold mb-6">
         <i class="fas fa-trophy mr-2"></i>Results
       </h2>
-      <p class="text-xl mb-6">Your Score: <span id="score" class="score-animation">0</span>/10</p>
+      <p class="text-xl mb-6">Your Score: <span id="score" class="score-animation">0</span>/<span id="total-questions-result"></span></p>
       <div id="leaderboard" class="mb-6 bg-gray-700 p-4 rounded-lg">
         <h3 class="text-lg font-semibold mb-2">Leaderboard</h3>
         <div id="leaderboard-content"></div>
@@ -258,6 +280,8 @@
     const confirmResume = document.getElementById('confirm-resume');
     const retryError = document.getElementById('retry-error');
     const questionNumber = document.getElementById('question-number');
+    const totalQuestions = document.getElementById('total-questions');
+    const totalQuestionsResult = document.getElementById('total-questions-result');
     const questionText = document.getElementById('question');
     const optionsContainer = document.getElementById('options');
     const timerDisplay = document.getElementById('timer');
@@ -269,6 +293,8 @@
     const progressBar = document.getElementById('progress-bar');
     const categorySelect = document.getElementById('category');
     const difficultySelect = document.getElementById('difficulty');
+    const questionCountSelect = document.getElementById('question-count');
+    const timerDurationSelect = document.getElementById('timer-duration');
     const reviewProgress = document.getElementById('review-progress');
     const prevReview = document.getElementById('prev-review');
     const nextReview = document.getElementById('next-review');
@@ -278,7 +304,7 @@
     let currentQuestionIndex = 0;
     let score = 0;
     let timer;
-    let timeLeft = 30; // Initial value, reset per question
+    let timeLeft = 30; // Default, updated by user selection
     let isPaused = false;
     let leaderboardPage = 0;
     let currentReviewIndex = 0;
@@ -288,7 +314,8 @@
     async function fetchQuestions() {
       const category = categorySelect.value;
       const difficulty = difficultySelect.value;
-      const triviaUrl = `https://opentdb.com/api.php?amount=10&type=multiple&category=${category}${difficulty ? `&difficulty=${difficulty}` : ''}`;
+      const questionCount = parseInt(questionCountSelect.value);
+      const triviaUrl = `https://opentdb.com/api.php?amount=${questionCount}&type=multiple&category=${category}${difficulty ? `&difficulty=${difficulty}` : ''}`;
       const geminiApiKey = "AIzaSyDIBI4Hd385tk_9AOPL_tcfPn37AQMWaTs"; // Temporary, insecure use
       loadingScreen.classList.remove('hidden');
       quizContent.classList.add('hidden');
@@ -296,7 +323,7 @@
         const triviaResponse = await fetch(triviaUrl);
         if (!triviaResponse.ok) throw new Error('Network error. Please check your connection.');
         const triviaData = await triviaResponse.json();
-        if (triviaData.response_code !== 0) throw new Error('Unable to fetch questions. Please try a different category or difficulty.');
+        if (triviaData.response_code !== 0) throw new Error('Unable to fetch questions. Please try a different category, difficulty, or reduce the number of questions.');
         questions = triviaData.results.map(q => ({
           question: decodeHTML(q.question),
           options: [...q.incorrect_answers, q.correct_answer]
@@ -352,6 +379,9 @@
       score = 0;
       userAnswers = [];
       scoreDisplay.textContent = '0';
+      timeLeft = parseInt(timerDurationSelect.value); // Set timer duration from user selection
+      totalQuestions.textContent = questionCountSelect.value;
+      totalQuestionsResult.textContent = questionCountSelect.value;
       await fetchQuestions();
       if (questions.length > 0) {
         loadingScreen.classList.add('hidden');
@@ -366,7 +396,7 @@
         showResults();
         return;
       }
-      timeLeft = 30; // Reset timer to 30 seconds for each question
+      timeLeft = parseInt(timerDurationSelect.value); // Reset timer to selected duration
       const q = questions[currentQuestionIndex];
       questionNumber.textContent = currentQuestionIndex + 1;
       questionText.textContent = q.question;
@@ -474,7 +504,7 @@
         leaderboardContent.innerHTML += `
           <p class="flex items-center">
             <i class="fas fa-medal mr-2 text-yellow-400"></i>
-            ${start + index + 1}. Score: ${entry.score}/10 - ${entry.date}
+            ${start + index + 1}. Score: ${entry.score}/${parseInt(totalQuestionsResult.textContent)} - ${entry.date}
           </p>
         `;
       });
